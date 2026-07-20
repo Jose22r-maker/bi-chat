@@ -107,11 +107,7 @@ function AuthScreen() {
         : await supabase.auth.signInWithPassword({ email, password });
 
     if (result.error) {
-      setStatus(
-        mode === 'sign-up'
-          ? 'No se pudo crear la cuenta. Revisa usuario, contrasena o confirmacion de email.'
-          : 'Usuario o contrasena incorrectos.',
-      );
+      setStatus(result.error.message);
       return;
     }
 
