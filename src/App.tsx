@@ -149,7 +149,7 @@ function AuthScreen() {
             maxLength={32}
             minLength={3}
             onChange={(event) => setUsername(event.target.value)}
-            pattern="[A-Za-z0-9._-]{3,32}"
+            pattern="[A-Za-z0-9._\-]{3,32}"
             required
             type="text"
             value={username}
