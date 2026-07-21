@@ -1087,3 +1087,5 @@ function CloseIcon() {
     </svg>
   );
 }
+
+}
