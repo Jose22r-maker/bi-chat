@@ -798,6 +798,7 @@ textarea {
 @media (max-width: 760px) {
   .chat-app {
     grid-template-columns: 1fr;
+    overflow: hidden;
   }
 
   .sidebar {
@@ -820,13 +821,13 @@ textarea {
   }
 
   .message-list {
-  min-height: 0;
-  height: 100%;
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 18px 22px;
-}
+    min-height: 0;
+    height: 100%;
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px;
+  }
 
   .composer,
   .chat-header {
@@ -871,5 +872,22 @@ textarea {
   .composer textarea {
     min-width: 0;
   }
+}
+
+
+/* WebKit Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-soft);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }
 
