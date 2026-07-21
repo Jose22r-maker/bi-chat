@@ -90,6 +90,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      scheduled_messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          sender_id: string;
+          body: string;
+          attachment_path: string | null;
+          scheduled_at: string;
+          executed: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          sender_id: string;
+          body: string;
+          attachment_path?: string | null;
+          scheduled_at: string;
+          executed?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          body?: string;
+          attachment_path?: string | null;
+          scheduled_at?: string;
+          executed?: boolean;
+        };
+        Relationships: [];
+      };
+      x21_users: {
+        Row: {
+          focalid: string;
+          email: string;
+          created_at: string;
+        };
+        Insert: {
+          focalid: string;
+          email: string;
+          created_at?: string;
+        };
+        Update: {
+          email?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -103,3 +148,18 @@ export type Database = {
 export type Conversation = Database['public']['Tables']['conversations']['Row'];
 export type Message = Database['public']['Tables']['messages']['Row'];
 export type Profile = Database['public']['Tables']['profiles']['Row'];
+export type ScheduledMessage = Database['public']['Tables']['scheduled_messages']['Row'];
+
+export type X21User = {
+  focalid: string;
+  email: string;
+  created_at: string;
+};
+
+export type AttachmentType = 'image' | 'video' | 'audio' | 'document';
+export type Attachment = {
+  file: File;
+  type: AttachmentType;
+  previewUrl?: string;
+  uploadProgress?: number;
+};

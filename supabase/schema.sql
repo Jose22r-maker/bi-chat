@@ -36,15 +36,28 @@ create table if not exists public.messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.scheduled_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  body text not null,
+  attachment_path text,
+  scheduled_at timestamptz not null,
+  executed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists conversation_members_user_idx on public.conversation_members(user_id);
 create index if not exists messages_conversation_created_idx on public.messages(conversation_id, created_at);
 create index if not exists profiles_username_idx on public.profiles(username);
 create index if not exists profiles_qr_id_idx on public.profiles(qr_id);
+create index if not exists scheduled_messages_scheduled_idx on public.scheduled_messages(scheduled_at, executed);
 
 alter table public.profiles enable row level security;
 alter table public.conversations enable row level security;
 alter table public.conversation_members enable row level security;
 alter table public.messages enable row level security;
+alter table public.scheduled_messages enable row level security;
 
 create or replace function public.is_conversation_member(conversation_uuid uuid)
 returns boolean
@@ -95,6 +108,10 @@ for each row execute function public.add_conversation_owner();
 
 create trigger on_message_created
 after insert on public.messages
+for each row execute function public.touch_conversation();
+
+create trigger on_scheduled_message_created
+after insert on public.scheduled_messages
 for each row execute function public.touch_conversation();
 
 create policy "profiles_select_members"
@@ -182,17 +199,31 @@ with check (
   and public.is_conversation_member(conversation_id)
 );
 
+create policy "scheduled_messages_select_member"
+on public.scheduled_messages for select
+to authenticated
+using (public.is_conversation_member(conversation_id));
+
+create policy "scheduled_messages_insert_member"
+on public.scheduled_messages for insert
+to authenticated
+with check (
+  sender_id = auth.uid()
+  and public.is_conversation_member(conversation_id)
+);
+
 alter publication supabase_realtime add table public.messages;
+alter publication supabase_realtime add table public.scheduled_messages;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'attachments',
   'attachments',
   false,
-  5242880,
-  array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+  52428800,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'application/pdf']
 )
-on conflict (id) do nothing;
+on conflict (id) do update set file_size_limit = 52428800, allowed_mime_types = excluded.allowed_mime_types;
 
 create policy "attachments_read_member"
 on storage.objects for select

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { isSupabaseConfigured, supabase } from './lib/supabase';
-import type { Conversation, Message, Profile } from './lib/types';
+import { isSupabaseConfigured, supabase, uploadFile, scheduleMessage } from './lib/supabase';
+import type { Conversation, Message, Profile, Attachment } from './lib/types';
+import { parseCommand, executeCommand } from './lib/commands';
+import { startScheduler } from './lib/scheduler';
+import type { ScheduledMessage, X21User } from './lib/types';
 
 type AppState = 'loading' | 'signed-out' | 'ready' | 'missing-config';
 
@@ -38,6 +41,13 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [state, setState] = useState<AppState>(isSupabaseConfigured ? 'loading' : 'missing-config');
 
+  // Start scheduler for scheduled messages
+  useEffect(() => {
+    if (supabase) {
+      startScheduler();
+    }
+  }, []);
+
   useEffect(() => {
     if (!supabase) return;
 
@@ -63,6 +73,27 @@ export function App() {
   return <ChatShell user={session.user} />;
 }
 
+// Parse message content to detect and highlight commands
+function parseMessageContent(body: string) {
+  if (!body.startsWith('/')) return body;
+  
+  const command = parseCommand(body);
+  if (command) {
+    const commandText = body.split(' ')[0];
+    const rest = body.substring(commandText.length).trim();
+    
+    return (
+      <>
+        <span className="command-badge">/{command.type}</span>
+        {command.params.length > 0 && <span className="command-badge">{command.params.join(', ')}</span>}
+        {rest && <span> {rest}</span>}
+      </>
+    );
+  }
+  
+  return body;
+}
+
 function MissingConfig() {
   return (
     <main className="centered-status">
@@ -74,44 +105,105 @@ function MissingConfig() {
 
 function AuthScreen() {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
-  const [username, setUsername] = useState('');
+  const [focalid, setFocalid] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState('');
 
+  // Generar FOCALID automáticamente para new users
+  useEffect(() => {
+    if (mode === 'sign-up') {
+      const randomFocalid = Math.random().toString(36).substring(2, 10);
+      setFocalid(randomFocalid);
+    }
+  }, [mode]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!supabase || !username.trim() || !password) return;
+    if (!supabase || !focalid.trim() || !password) return;
 
-    const normalizedUsername = normalizeUsername(username);
-    if (!normalizedUsername) {
-      setStatus('Usa solo letras, numeros, punto, guion o guion bajo.');
+    if (focalid.length !== 8) {
+      setStatus('El FOCALID debe tener exactamente 8 caracteres.');
       return;
     }
 
-    const email = usernameToPrivateEmail(normalizedUsername);
     setStatus(mode === 'sign-up' ? 'Creando cuenta...' : 'Entrando...');
 
-    const result =
-      mode === 'sign-up'
-        ? await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                username: normalizedUsername,
-                display_name: normalizedUsername,
-                qr_id: normalizedUsername,
-              },
+    try {
+      if (mode === 'sign-up') {
+        // Registro: generar email único y crear usuario
+        const email = `${focalid}@focalid.bi-chat.x21.local`;
+        
+        // 1. Crear usuario en Supabase Auth
+        const authResult = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              username: focalid,
+              display_name: focalid,
+              qr_id: focalid,
             },
-          })
-        : await supabase.auth.signInWithPassword({ email, password });
+          },
+        });
 
-    if (result.error) {
-      setStatus(result.error.message);
-      return;
+        if (authResult.error) {
+          setStatus(authResult.error.message);
+          return;
+        }
+
+        // 2. Crear entrada en x21_users
+        const { error: x21Error } = await (supabase
+          .from('x21_users') as any)
+          .insert([{ focalid, email }]);
+
+        if (x21Error) {
+          setStatus(`Cuenta creada pero error en FOCALID: ${x21Error.message}`);
+          return;
+        }
+
+        // 3. Crear perfil
+        if (authResult.data.user?.id) {
+          await supabase.from('profiles').insert({
+            id: authResult.data.user.id,
+            username: focalid,
+            qr_id: focalid,
+            display_name: focalid,
+          });
+        }
+
+        setStatus('Cuenta creada exitosamente!');
+        setMode('sign-in');
+      } else {
+        // Login: buscar email por FOCALID
+        const { data: userRecord, error: lookupError } = await supabase
+          .from('x21_users')
+          .select('email')
+          .eq('focalid', focalid)
+          .single() as any;
+
+        if (lookupError || !userRecord) {
+          setStatus('FOCALID no encontrado. ¿Te has registrado?');
+          return;
+        }
+
+        const email = userRecord.email;
+
+        // 3. Autenticar con email y contraseña
+        const loginResult = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (loginResult.error) {
+          setStatus(loginResult.error.message);
+          return;
+        }
+
+        setStatus('');
+      }
+    } catch (err: any) {
+      setStatus(err.message || 'Error en la autenticación');
     }
-
-    setStatus('');
   }
 
   return (
@@ -119,7 +211,7 @@ function AuthScreen() {
       <section className="auth-panel" aria-labelledby="auth-title">
         <p className="eyebrow">x21</p>
         <h1 id="auth-title">BI Chat</h1>
-        <p className="auth-copy">Entra con usuario y contrasena. Tu usuario se usa como identidad QR.</p>
+        <p className="auth-copy">Entra con tu FOCALID de 8 caracteres. Genera uno nuevo o usa el tuyo.</p>
         <div className="auth-tabs" role="tablist" aria-label="Modo de acceso">
           <button
             aria-selected={mode === 'sign-in'}
@@ -141,18 +233,18 @@ function AuthScreen() {
           </button>
         </div>
         <form className="auth-form" onSubmit={handleSubmit}>
-          <label htmlFor="username">Usuario</label>
+          <label htmlFor="focalid">FOCALID</label>
           <input
-            id="username"
-            aria-label="Usuario"
+            id="focalid"
+            aria-label="FOCALID"
             autoComplete="username"
-            maxLength={32}
-            minLength={3}
-            onChange={(event) => setUsername(event.target.value)}
-            pattern="[A-Za-z0-9._\-]{3,32}"
+            maxLength={8}
+            minLength={8}
+            onChange={(event) => setFocalid(event.target.value)}
+            pattern="[a-z0-9]{8}"
             required
             type="text"
-            value={username}
+            value={focalid}
           />
           <label htmlFor="password">Contrasena</label>
           <input
@@ -198,7 +290,10 @@ function ChatShell({ user }: { user: User }) {
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [status, setStatus] = useState('');
+  const [showCommandHelp, setShowCommandHelp] = useState(false);
   const [profilesMap, setProfilesMap] = useState<Record<string, Profile>>({});
+  const [fileAttachments, setFileAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const sidebarVisible = sidebarPinned || sidebarHovered || searchOpen || settingsOpen || qrOpen;
   const username = typeof user.user_metadata.username === 'string' ? user.user_metadata.username : user.id.slice(0, 8);
@@ -329,6 +424,15 @@ function ChatShell({ user }: { user: User }) {
       });
   }, [messages, profilesMap]);
 
+  // Auto-scroll al final cuando se añade un mensaje
+  useEffect(() => {
+    if (messages.length > 0 && messageListRef.current) {
+      queueMicrotask(() => {
+        virtualizer.scrollToIndex(messages.length - 1, { align: 'end' });
+      });
+    }
+  }, [messages, virtualizer]);
+
   // Referencia para la conversación activa para evitar cierres obsoletos en la suscripción global
   const activeConvIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -339,6 +443,7 @@ function ChatShell({ user }: { user: User }) {
   useEffect(() => {
     if (!supabase) return;
     const client = supabase;
+    const pendingMessageIds = useRef<Set<string>>(new Set());
 
     // Solicitar permisos de notificación en navegador
     if ('Notification' in window && Notification.permission === 'default') {
@@ -357,6 +462,12 @@ function ChatShell({ user }: { user: User }) {
         (payload) => {
           const newMsg = payload.new as Message;
           const currentActiveId = activeConvIdRef.current;
+
+          // Evitar duplicación: saltar mensajes que ya se añadieron optimísticamente
+          if (pendingMessageIds.current.has(newMsg.id)) {
+            pendingMessageIds.current.delete(newMsg.id);
+            return;
+          }
 
           // 1. Si pertenece a la conversación actual, añadirlo a la pantalla
           if (newMsg.conversation_id === currentActiveId) {
@@ -422,9 +533,24 @@ function ChatShell({ user }: { user: User }) {
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!supabase || !activeConversationId || !draft.trim()) return;
-    const body = draft.trim();
+    if (!supabase || !activeConversationId) return;
+    
+    let body = draft.trim();
     setDraft('');
+    
+    // Limpiar archivos temporales
+    fileAttachments.forEach(f => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+    });
+    setFileAttachments([]);
+
+    // Comprobar si es un comando
+    const command = parseCommand(body);
+    if (command) {
+      const result = await executeCommand(command, activeConversationId, user.id);
+      setStatus(result.message || '');
+      return;
+    }
 
     const tempId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `temp-${Date.now()}`;
     const tempMsg: Message = {
@@ -443,6 +569,18 @@ function ChatShell({ user }: { user: User }) {
       return next;
     });
 
+    // Procesar archivos adjuntos primero
+    let attachmentPath: string | null = null;
+    if (fileAttachments.length > 0) {
+      const file = fileAttachments[0].file;
+      attachmentPath = await uploadFile(file, activeConversationId);
+      if (!attachmentPath) {
+        setStatus('Error al subir el archivo.');
+        setMessages((current) => current.filter((m) => m.id !== tempId));
+        return;
+      }
+    }
+
     // Insert directly into messages table (RLS will check sender_id and membership)
     const { data, error } = await supabase
       .from('messages')
@@ -450,6 +588,7 @@ function ChatShell({ user }: { user: User }) {
         conversation_id: activeConversationId,
         sender_id: user.id,
         body,
+        attachment_path: attachmentPath,
       })
       .select()
       .single();
@@ -617,6 +756,13 @@ function ChatShell({ user }: { user: User }) {
           {visibleConversations.length === 0 && profileResults.length === 0 ? (
             <p className="empty-state">{searchQuery.trim() ? 'Sin resultados.' : 'Sin conversaciones.'}</p>
           ) : null}
+
+          <section className="commands-section" aria-label="Comandos disponibles">
+            <p className="commands-title" onClick={() => setShowCommandHelp(true)}>
+              <span className="command-icon">🤖</span> Comandos
+            </p>
+          </section>
+
           {visibleConversations.map((conversation) => (
             <button
               aria-current={conversation.id === activeConversationId ? 'page' : undefined}
@@ -679,7 +825,9 @@ function ChatShell({ user }: { user: User }) {
                       <strong>{senderName}</strong>
                       <time dateTime={message.created_at}>{formatTime.format(new Date(message.created_at))}</time>
                     </div>
-                    <p>{message.body}</p>
+                    <p>
+                      {parseMessageContent(message.body)}
+                    </p>
                     {message.attachment_path ? (
                       <img alt="" className="message-image" loading="lazy" src={message.attachment_path} />
                     ) : null}
@@ -691,7 +839,25 @@ function ChatShell({ user }: { user: User }) {
         </div>
 
         <form className="composer" onSubmit={sendMessage}>
-          <button aria-label="Adjuntar archivo" className="icon-button" type="button">
+          <input
+            ref={fileInputRef}
+            accept="image/*,video/*,audio/*"
+            aria-label="Adjuntar archivo"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                const previewUrl = URL.createObjectURL(file);
+                setFileAttachments(prev => [
+                  ...prev,
+                  { file, type: getFileType(file), previewUrl }
+                ]);
+              }
+              event.target.value = '';
+            }}
+            style={{ display: 'none' }}
+            type="file"
+          />
+          <button aria-label="Adjuntar archivo" className="icon-button" onClick={() => fileInputRef.current?.click()} type="button">
             <AttachIcon />
           </button>
           <textarea
@@ -704,11 +870,38 @@ function ChatShell({ user }: { user: User }) {
               }
               if (event.key === 'Escape') setDraft('');
             }}
-            placeholder="Escribe un mensaje"
+            placeholder={fileAttachments.length > 0 ? 'Escribe un mensaje o adjunta más archivos' : 'Escribe un mensaje'}
             rows={1}
             value={draft}
           />
-          <button aria-label="Enviar mensaje" className="send-button" disabled={!draft.trim()} type="submit">
+          {fileAttachments.length > 0 && (
+            <div className="file-previews">
+              {fileAttachments.map((attachment, index) => (
+                <div className="file-preview" key={index}>
+                  {attachment.type === 'image' ? (
+                    <img alt="" className="file-preview-image" src={attachment.previewUrl} />
+                  ) : (
+                    <span className="file-preview-icon">
+                      {attachment.type === 'video' ? '🎬' : attachment.type === 'audio' ? '🎵' : '📄'}
+                    </span>
+                  )}
+                  <span className="file-preview-name">{attachment.file.name}</span>
+                  <button
+                    aria-label="Eliminar archivo"
+                    className="file-preview-remove"
+                    onClick={() => {
+                      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+                      setFileAttachments(prev => prev.filter((_, i) => i !== index));
+                    }}
+                    type="button"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button aria-label="Enviar mensaje" className="send-button" disabled={!draft.trim() && fileAttachments.length === 0} type="submit">
             <SendIcon />
           </button>
         </form>
@@ -738,6 +931,10 @@ function ChatShell({ user }: { user: User }) {
           onStatus={setStatus}
           username={username}
         />
+      ) : null}
+
+      {showCommandHelp ? (
+        <CommandHelpDialog onClose={() => setShowCommandHelp(false)} />
       ) : null}
     </main>
   );
@@ -980,6 +1177,78 @@ function GearIcon() {
     <svg aria-hidden="true" height="24" viewBox="0 0 24 24" width="24">
       <path d="m19.4 13.5 1.5 1.2-2 3.5-1.9-.7a7.8 7.8 0 0 1-1.7 1l-.3 2h-4l-.3-2a7.8 7.8 0 0 1-1.7-1l-1.9.7-2-3.5 1.5-1.2a7.2 7.2 0 0 1 0-2l-1.5-1.2 2-3.5 1.9.7a7.8 7.8 0 0 1 1.7-1l.3-2h4l.3 2a7.8 7.8 0 0 1 1.7 1l1.9-.7 2 3.5-1.5 1.2a7.2 7.2 0 0 1 0 2ZM13 15.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="currentColor" />
     </svg>
+  );
+}
+
+function getFileType(file: File): 'image' | 'video' | 'audio' | 'document' {
+  const type = file.type.split('/')[0];
+  if (type === 'image') return 'image';
+  if (type === 'video') return 'video';
+  if (type === 'audio') return 'audio';
+  return 'document';
+}
+
+function CommandHelpDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section aria-labelledby="commands-title" aria-modal="true" className="dialog-panel" role="dialog">
+        <div className="dialog-header">
+          <div>
+            <p className="eyebrow">Comandos</p>
+            <h2 id="commands-title">Ayuda de comandos</h2>
+          </div>
+          <button aria-label="Cerrar ayuda" className="icon-button" onClick={onClose} type="button">
+            <CloseIcon />
+          </button>
+        </div>
+        <div className="command-help">
+          <p className="command-help-item">
+            <code>/future=1M [texto]</code> - Mensaje programado (M=minutos, S=segundos, H=horas)
+          </p>
+          <p className="command-help-item">
+            <code>/onevision=5 [texto]</code> - Mensaje autodestructible (5 segundos)
+          </p>
+          <p className="command-help-item">
+            <code>/boom=100-Hola</code> - Envía 100 mensajes "Hola"
+          </p>
+          <p className="command-help-item">
+            <code>/spam=50-Hola</code> - Envía 50 mensajes "Hola"
+          </p>
+          <p className="command-help-item">
+            <code>/echo=3-Hola</code> - Echo 3x
+          </p>
+          <p className="command-help-item">
+            <code>/robot=file.js</code> - Robot programming mode
+          </p>
+          <p className="command-help-item">
+            <code>/ascii=Hello</code> - ASCII art
+          </p>
+          <p className="command-help-item">
+            <code>/crypto=BTC,ETH</code> - Precios cripto
+          </p>
+          <p className="command-help-item">
+            <code>/weather=Madrid</code> - Clima
+          </p>
+          <p className="command-help-item">
+            <code>/hack=5</code> - Hack sequence
+          </p>
+          <p className="command-help-item">
+            <code>/matrix=3</code> - Matrix mode
+          </p>
+          <p className="command-help-item">
+            <code>/speak=Hello world</code> - Speak text
+          </p>
+          <p className="command-help-item">
+            <code>/countdown=10</code> - Countdown de 10s
+          </p>
+        </div>
+        <div className="dialog-actions">
+          <button className="primary-button" onClick={onClose} type="button">
+            Entendido
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
