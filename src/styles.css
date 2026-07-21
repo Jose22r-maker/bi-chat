@@ -290,20 +290,17 @@ textarea {
     var(--surface);
 }
 
-.contact-rail {
+.contact-rail-button {
   position: fixed;
   z-index: 12;
   top: 18px;
   left: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: auto;
-  min-width: 44px;
-  max-width: calc(100vw - 28px);
-  padding: 0 14px;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
   color: var(--text);
   background: #ffffff;
   box-shadow: var(--shadow);
@@ -891,3 +888,6 @@ textarea {
   background: var(--muted);
 }
 
+
+.close-sidebar-button { display: none; }
+@media (max-width: 760px) { .close-sidebar-button { display: inline-grid; } }

@@ -666,15 +666,12 @@ function ChatShell({ user }: { user: User }) {
   return (
     <main className={`chat-app ${sidebarVisible ? 'sidebar-open' : 'sidebar-collapsed'}`}>
       <button
-        aria-label={sidebarVisible ? 'Ocultar contactos' : 'Mostrar contactos'}
-        aria-pressed={sidebarVisible}
-        className="contact-rail"
-        onClick={() => setSidebarPinned((current) => !current)}
-        onMouseEnter={() => setSidebarHovered(true)}
+        aria-label="Abrir contactos"
+        className="contact-rail-button"
+        onClick={() => setSidebarPinned(true)}
         type="button"
       >
         <ContactsIcon />
-        <span>Contactos</span>
       </button>
 
       <aside
@@ -690,8 +687,8 @@ function ChatShell({ user }: { user: User }) {
             <h1>BI Chat</h1>
             <p className="sidebar-subtitle">Mensajes claros</p>
           </div>
-          <button aria-label="Configuracion y perfil" className="icon-button" onClick={() => setSettingsOpen(true)} type="button">
-            <GearIcon />
+          <button aria-label="Cerrar contactos" className="icon-button close-sidebar-button" onClick={() => setSidebarPinned(false)} type="button">
+            <CloseIcon />
           </button>
         </div>
 
