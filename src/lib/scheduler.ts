@@ -16,7 +16,7 @@ export async function checkAndExecuteScheduledMessages() {
     .limit(50);
 
   if (error) {
-    console.error('Error fetching scheduled messages:', error);
+    console.error('Error fetching scheduled messages. Please verify the table "scheduled_messages" exists in Supabase and that RLS policies allow access:', error);
     return;
   }
 

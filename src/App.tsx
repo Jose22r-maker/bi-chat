@@ -435,6 +435,8 @@ function ChatShell({ user }: { user: User }) {
 
   // Referencia para la conversación activa para evitar cierres obsoletos en la suscripción global
   const activeConvIdRef = useRef<string | null>(null);
+  const pendingMessageIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     activeConvIdRef.current = activeConversationId;
   }, [activeConversationId]);
@@ -443,7 +445,6 @@ function ChatShell({ user }: { user: User }) {
   useEffect(() => {
     if (!supabase) return;
     const client = supabase;
-    const pendingMessageIds = useRef<Set<string>>(new Set());
 
     // Solicitar permisos de notificación en navegador
     if ('Notification' in window && Notification.permission === 'default') {
@@ -464,8 +465,8 @@ function ChatShell({ user }: { user: User }) {
           const currentActiveId = activeConvIdRef.current;
 
           // Evitar duplicación: saltar mensajes que ya se añadieron optimísticamente
-          if (pendingMessageIds.current.has(newMsg.id)) {
-            pendingMessageIds.current.delete(newMsg.id);
+          if (pendingMessageIdsRef.current.has(newMsg.id)) {
+            pendingMessageIdsRef.current.delete(newMsg.id);
             return;
           }
 
