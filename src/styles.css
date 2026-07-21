@@ -573,6 +573,7 @@ textarea {
 
 .message-list {
   min-height: 0;
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 18px 22px;
