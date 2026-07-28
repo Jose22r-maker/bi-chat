@@ -731,24 +731,100 @@ function ChatShell({ user }: { user: User }) {
 
       {/* Mobile Bottom Navigation */}
       <nav className="mobile-bottom-nav">
-        <button onClick={() => { setActiveTab('home'); }} aria-selected={activeTab === 'home'}>
+        <button onClick={() => { setActiveTab('home'); }} aria-selected={activeTab === 'home'} aria-label="Inicio">
           <HomeIcon />
         </button>
-        <button onClick={() => { setActiveTab('messages'); }} aria-selected={activeTab === 'messages'}>
+        <button onClick={() => { setActiveTab('messages'); }} aria-selected={activeTab === 'messages'} aria-label="Mensajes">
           <MessagesIcon />
         </button>
-        <button onClick={() => { setActiveTab('search'); setSearchOpen(true); }} aria-selected={activeTab === 'search'}>
+        <button onClick={() => { setActiveTab('search'); setSearchOpen(true); }} aria-selected={activeTab === 'search'} aria-label="Buscar">
           <SearchIcon />
         </button>
-        <button onClick={() => { setActiveTab('profile'); setSettingsOpen(true); }} aria-selected={activeTab === 'profile'}>
+        <button onClick={() => { setActiveTab('profile'); setSettingsOpen(true); }} aria-selected={activeTab === 'profile'} aria-label="Perfil">
           <UserIcon />
         </button>
-        <button onClick={() => { setActiveTab('messages'); setActiveConversationId(null); }}>
+        <button onClick={() => { setActiveTab('messages'); setActiveConversationId(null); }} aria-label="Salir">
           <EscapeIcon />
         </button>
       </nav>
 
-      {/* ... (existing dialogs) ... */}
+      {/* Button Islands System - Quick Actions */}
+      {activeConversationId && (
+        <div className="button-island chat-actions-island" role="group" aria-label="Acciones rápidas">
+          <button 
+            className="icon-button" 
+            onClick={() => fileInputRef.current?.click()} 
+            aria-label="Adjuntar archivo"
+            type="button"
+          >
+            <AttachIcon />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,audio/*,.pdf"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const previewUrl = getFileType(file) === 'image' ? URL.createObjectURL(file) : undefined;
+                setFileAttachments([{ file, type: getFileType(file), previewUrl }]);
+              }
+            }}
+          />
+          <button 
+            className="icon-button" 
+            onClick={() => setShowCommandHelp(true)} 
+            aria-label="Ayuda de comandos"
+            type="button"
+          >
+            <span style={{ fontSize: '18px', fontWeight: 'bold' }}>?</span>
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Island for mobile */}
+      <div className="button-island nav-island" role="navigation" aria-label="Navegación rápida">
+        <button 
+          className="icon-button" 
+          onClick={() => setSidebarPinned(!sidebarPinned)} 
+          aria-label="Mostrar/ocultar sidebar"
+          type="button"
+        >
+          <ContactsIcon />
+        </button>
+        <button 
+          className="icon-button" 
+          onClick={() => setQrOpen(true)} 
+          aria-label="Buscar por QR"
+          type="button"
+        >
+          <QrIcon />
+        </button>
+      </div>
+
+      {/* Dialogs */}
+      {showCommandHelp && <CommandHelpDialog onClose={() => setShowCommandHelp(false)} />}
+      {settingsOpen && (
+        <SettingsDialog
+          displayName={displayName}
+          username={username}
+          onClose={() => setSettingsOpen(false)}
+          onStatus={setStatus}
+        />
+      )}
+      {qrOpen && (
+        <QrSearchDialog
+          username={username}
+          onClose={() => setQrOpen(false)}
+          onSearch={(value) => {
+            setSearchQuery(value);
+            setSearchOpen(true);
+            setQrOpen(false);
+          }}
+          onStatus={setStatus}
+        />
+      )}
     </main>
   );
 
