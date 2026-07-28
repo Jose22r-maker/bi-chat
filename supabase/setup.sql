@@ -205,7 +205,7 @@ using (public.is_conversation_member(conversation_id));
 
 drop policy if exists "members_insert_owner" on public.conversation_members;
 create policy "members_insert_owner" on public.conversation_members for insert to authenticated
-using (exists (select 1 from public.conversation_members where conversation_id = conversation_members.conversation_id and user_id = auth.uid() and role = 'owner'));
+with check (exists (select 1 from public.conversation_members where conversation_id = conversation_members.conversation_id and user_id = auth.uid() and role = 'owner'));
 
 drop policy if exists "messages_select_member" on public.messages;
 create policy "messages_select_member" on public.messages for select to authenticated
