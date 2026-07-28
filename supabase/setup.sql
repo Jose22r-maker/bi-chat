@@ -1,5 +1,5 @@
 -- ============================================
--- BI Chat - SQL completo (seguro para re-ejecutar)
+-- BI Chat - SQL 100% seguro para re-ejecutar
 -- ============================================
 
 -- 1. Extensiones
@@ -149,7 +149,7 @@ $$;
 
 grant execute on function public.add_message(uuid, text) to authenticated;
 
--- 6. Triggers (drop + recreate para evitar "already exists")
+-- 6. Triggers
 drop trigger if exists on_conversation_created on public.conversations;
 create trigger on_conversation_created
 after insert on public.conversations
@@ -170,7 +170,8 @@ create trigger on_auth_user_deleted
 after delete on auth.users
 for each row execute function public.delete_x21_user_on_auth_delete();
 
--- 7. Políticas RLS
+-- 7. Políticas RLS (drop + recreate)
+drop policy if exists "profiles_select_members" on public.profiles;
 create policy "profiles_select_members" on public.profiles for select to authenticated
 using (id = auth.uid() or exists (
   select 1 from public.conversation_members mine
@@ -178,33 +179,57 @@ using (id = auth.uid() or exists (
   where mine.user_id = auth.uid() and theirs.user_id = profiles.id
 ));
 
+drop policy if exists "profiles_select_authenticated_search" on public.profiles;
 create policy "profiles_select_authenticated_search" on public.profiles for select to authenticated using (true);
+
+drop policy if exists "profiles_insert_own" on public.profiles;
 create policy "profiles_insert_own" on public.profiles for insert to authenticated with check (id = auth.uid());
+
+drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
+drop policy if exists "conversations_select_member" on public.conversations;
 create policy "conversations_select_member" on public.conversations for select to authenticated
 using (created_by = auth.uid() or public.is_conversation_member(id));
+
+drop policy if exists "conversations_insert_own" on public.conversations;
 create policy "conversations_insert_own" on public.conversations for insert to authenticated with check (created_by = auth.uid());
+
+drop policy if exists "conversations_update_owner" on public.conversations;
 create policy "conversations_update_owner" on public.conversations for update to authenticated
 using (exists (select 1 from public.conversation_members where conversation_id = conversations.id and user_id = auth.uid() and role = 'owner'));
 
+drop policy if exists "members_select_own_conversations" on public.conversation_members;
 create policy "members_select_own_conversations" on public.conversation_members for select to authenticated
 using (public.is_conversation_member(conversation_id));
+
+drop policy if exists "members_insert_owner" on public.conversation_members;
 create policy "members_insert_owner" on public.conversation_members for insert to authenticated
 using (exists (select 1 from public.conversation_members where conversation_id = conversation_members.conversation_id and user_id = auth.uid() and role = 'owner'));
 
+drop policy if exists "messages_select_member" on public.messages;
 create policy "messages_select_member" on public.messages for select to authenticated
 using (public.is_conversation_member(conversation_id));
+
+drop policy if exists "messages_insert_member" on public.messages;
 create policy "messages_insert_member" on public.messages for insert to authenticated
 using (sender_id = auth.uid() and public.is_conversation_member(conversation_id));
 
+drop policy if exists "scheduled_messages_select_member" on public.scheduled_messages;
 create policy "scheduled_messages_select_member" on public.scheduled_messages for select to authenticated
 using (public.is_conversation_member(conversation_id));
+
+drop policy if exists "scheduled_messages_insert_member" on public.scheduled_messages;
 create policy "scheduled_messages_insert_member" on public.scheduled_messages for insert to authenticated
 using (sender_id = auth.uid() and public.is_conversation_member(conversation_id));
 
+drop policy if exists "x21_users_select_own" on public.x21_users;
 create policy "x21_users_select_own" on public.x21_users for select to authenticated using (email = auth.email());
+
+drop policy if exists "x21_users_insert_authenticated" on public.x21_users;
 create policy "x21_users_insert_authenticated" on public.x21_users for insert to authenticated with check (true);
+
+drop policy if exists "x21_users_update_own" on public.x21_users;
 create policy "x21_users_update_own" on public.x21_users for update to authenticated using (email = auth.email());
 
 -- 8. Realtime
@@ -217,7 +242,10 @@ values ('attachments', 'attachments', false, 52428800,
   array['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm','audio/mpeg','audio/wav','audio/ogg','application/pdf'])
 on conflict (id) do update set file_size_limit = 52428800, allowed_mime_types = excluded.allowed_mime_types;
 
+drop policy if exists "attachments_read_member" on storage.objects;
 create policy "attachments_read_member" on storage.objects for select to authenticated
 using (bucket_id = 'attachments' and public.is_conversation_member((storage.foldername(name))[1]::uuid));
+
+drop policy if exists "attachments_insert_member" on storage.objects;
 create policy "attachments_insert_member" on storage.objects for insert to authenticated
 with check (bucket_id = 'attachments' and public.is_conversation_member((storage.foldername(name))[1]::uuid));
