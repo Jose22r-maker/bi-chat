@@ -1,5 +1,5 @@
 -- ============================================
--- BI Chat - SQL completo (ejecutar una sola vez)
+-- BI Chat - SQL completo (seguro para re-ejecutar)
 -- ============================================
 
 -- 1. Extensiones
@@ -149,19 +149,23 @@ $$;
 
 grant execute on function public.add_message(uuid, text) to authenticated;
 
--- 6. Triggers
+-- 6. Triggers (drop + recreate para evitar "already exists")
+drop trigger if exists on_conversation_created on public.conversations;
 create trigger on_conversation_created
 after insert on public.conversations
 for each row execute function public.add_conversation_owner();
 
+drop trigger if exists on_message_created on public.messages;
 create trigger on_message_created
 after insert on public.messages
 for each row execute function public.touch_conversation();
 
+drop trigger if exists on_scheduled_message_created on public.scheduled_messages;
 create trigger on_scheduled_message_created
 after insert on public.scheduled_messages
 for each row execute function public.touch_conversation();
 
+drop trigger if exists on_auth_user_deleted on auth.users;
 create trigger on_auth_user_deleted
 after delete on auth.users
 for each row execute function public.delete_x21_user_on_auth_delete();
