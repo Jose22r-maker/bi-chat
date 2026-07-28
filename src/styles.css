@@ -28,15 +28,24 @@
 }
 
 html, body {
-  height: 100vh;
+  height: 100%;
+  min-height: 100dvh;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100vh; /* Fallback para navegadores sin dvh */
   background: var(--surface);
   padding-bottom: env(safe-area-inset-bottom);
+  overflow: hidden; /* Evitar scroll doble en app full-screen */
+}
+
+#root {
+  height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 button,
