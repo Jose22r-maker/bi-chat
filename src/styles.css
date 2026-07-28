@@ -28,15 +28,24 @@
 }
 
 html, body {
-  height: 100vh;
+  height: 100%;
+  min-height: 100dvh;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100vh; /* Fallback para navegadores sin dvh */
   background: var(--surface);
   padding-bottom: env(safe-area-inset-bottom);
+  overflow: hidden; /* Evitar scroll doble en app full-screen */
+}
+
+#root {
+  height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 button,
@@ -798,15 +807,20 @@ textarea {
     overflow: hidden;
     /* Independent sections */
     display: block; 
-    height: 100vh;
+    height: 100dvh;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
   }
 
   .mobile-content-wrapper {
-    height: calc(100vh - 60px);
+    height: calc(100dvh - 60px - env(safe-area-inset-bottom));
     overflow: hidden;
+    position: relative;
+    display: block;
   }
 
-  .sidebar, .chat-panel {
+  /* Each tab shows its corresponding section */
+  .mobile-content-wrapper .sidebar,
+  .mobile-content-wrapper .chat-panel {
     display: none;
     width: 100%;
     height: 100%;
@@ -814,26 +828,42 @@ textarea {
     top: 0;
     left: 0;
     z-index: 10;
+    background: var(--surface);
   }
   
-  .mobile-content-wrapper.messages .sidebar,
-  .mobile-content-wrapper.messages .chat-panel {
+  /* Home tab: show sidebar with conversations */
+  .mobile-content-wrapper.home .sidebar {
     display: flex;
   }
   
-  .mobile-content-wrapper.home .sidebar,
-  .mobile-content-wrapper.profile .sidebar,
-  .mobile-content-wrapper.search .sidebar {
-      display: flex;
+  /* Messages tab: show chat panel OR sidebar when searching */
+  .mobile-content-wrapper.messages .chat-panel {
+    display: grid;
   }
   
+  .mobile-content-wrapper.messages.sidebar-open .sidebar,
+  .mobile-content-wrapper.search .sidebar {
+    display: flex;
+  }
+  
+  /* Search tab: show sidebar with search */
+  .mobile-content-wrapper.search .sidebar {
+    display: flex;
+  }
+  
+  /* Profile tab: show profile panel */
+  .mobile-content-wrapper.profile .chat-panel {
+    display: grid;
+  }
+
   /* Reset sidebar positioning for mobile independent view */
   .sidebar {
-    position: static;
+    position: absolute;
     transform: none;
     opacity: 1;
     pointer-events: auto;
     border-right: none;
+    background: var(--surface);
   }
 
   .message-list {
@@ -843,6 +873,7 @@ textarea {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: 14px;
+    padding-top: calc(14px + env(safe-area-inset-top));
   }
 
   .composer,
@@ -852,7 +883,8 @@ textarea {
   }
 
   .chat-header {
-    padding-top: 76px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    min-height: calc(72px + env(safe-area-inset-top));
   }
 
   .chat-header-actions {
@@ -862,6 +894,16 @@ textarea {
 
   .message-bubble {
     max-width: 88%;
+  }
+  
+  /* iOS WebKit specific fixes */
+  .chat-panel {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+  
+  textarea, input {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
   }
 }
 
@@ -945,4 +987,190 @@ textarea {
 }
 .mobile-bottom-nav button[aria-selected='true'] {
   color: var(--accent);
+}
+
+/* ============================================
+   SISTEMA DE ISLAS DE BOTONES (Button Islands)
+   ============================================ */
+
+/* Isla flotante de acciones rápidas en chat */
+.button-island {
+  position: fixed;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 95%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgb(17 24 39 / 15%);
+  border: 1px solid var(--border);
+  z-index: 50;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+
+.button-island.hidden {
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
+}
+
+/* Isla inferior para acciones de chat (móvil) */
+.chat-actions-island {
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.chat-actions-island.hidden {
+  transform: translateX(-50%) translateY(20px);
+}
+
+/* Isla lateral para navegación rápida (móvil) */
+.nav-island {
+  position: fixed;
+  right: 16px;
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+}
+
+.nav-island .icon-button {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 2px 12px rgb(17 24 39 / 10%);
+}
+
+.nav-island .icon-button:hover {
+  background: var(--surface-blue);
+}
+
+/* Isla superior para información de conversación */
+.header-island {
+  top: calc(16px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+}
+
+.header-island.hidden {
+  transform: translateX(-50%) translateY(-20px);
+}
+
+/* Botones dentro de las islas */
+.button-island .icon-button {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.button-island .icon-button:hover {
+  background: var(--surface-soft);
+}
+
+/* Versión móvil de las islas */
+@media (max-width: 760px) {
+  .chat-actions-island {
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    left: 16px;
+    right: 16px;
+    transform: none;
+    justify-content: center;
+  }
+  
+  .nav-island {
+    right: 12px;
+    bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+  
+  .header-island {
+    top: calc(12px + env(safe-area-inset-top));
+    left: 16px;
+    right: 16px;
+    transform: none;
+    justify-content: space-between;
+  }
+  
+  /* Ajuste para evitar overlap con navegación inferior */
+  .mobile-bottom-nav {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(60px + env(safe-area-inset-bottom));
+  }
+  
+  /* Botones de navegación con mejor touch target */
+  .mobile-bottom-nav button {
+    min-width: 56px;
+    min-height: 56px;
+    padding: 8px;
+  }
+  
+  .mobile-bottom-nav button svg {
+    width: 24px;
+    height: 24px;
+  }
+  
+  /* Indicador de pestaña activa */
+  .mobile-bottom-nav button[aria-selected='true'] {
+    position: relative;
+  }
+  
+  .mobile-bottom-nav button[aria-selected='true']::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+}
+
+/* Animaciones suaves para interacciones táctiles */
+@media (hover: none) and (pointer: coarse) {
+  .button-island,
+  .mobile-bottom-nav button,
+  .icon-button {
+    transition: background-color 160ms ease;
+  }
+  
+  .button-island:active,
+  .mobile-bottom-nav button:active,
+  .icon-button:active {
+    transform: scale(0.92);
+  }
+}
+
+/* Soporte para modo oscuro (futuro) */
+@media (prefers-color-scheme: dark) {
+  .button-island {
+    background: rgb(31 41 55 / 95%);
+    border-color: #374151;
+  }
+  
+  .nav-island .icon-button {
+    background: #1f2937;
+  }
+  
+  .nav-island .icon-button:hover {
+    background: #374151;
+  }
+}
+
+/* Accesibilidad: reducir movimiento */
+@media (prefers-reduced-motion: reduce) {
+  .button-island,
+  .nav-island,
+  .header-island {
+    transition: none;
+  }
 }

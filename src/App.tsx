@@ -693,9 +693,10 @@ function ChatShell({ user }: { user: User }) {
   return (
     <main className={`chat-app ${sidebarVisible ? 'sidebar-open' : 'sidebar-collapsed'}`}>
       
-      {/* Mobile-only view logic: Only show sidebar or chat panel based on activeTab */}
+      {/* Mobile-only view logic: Independent sections for each tab */}
       <div className={`mobile-content-wrapper ${activeTab}`}>
-        {(activeTab === 'messages' || !sidebarVisible) && (
+        {/* Sidebar - Visible on home, search, profile tabs OR when sidebar is explicitly opened */}
+        {(activeTab === 'home' || activeTab === 'search' || activeTab === 'profile' || (activeTab === 'messages' && sidebarVisible)) && (
           <aside className="sidebar">
             <div className="sidebar-header">
               <div>
@@ -706,7 +707,19 @@ function ChatShell({ user }: { user: User }) {
                 <CloseIcon />
               </button>
             </div>
-            {/* ... (sidebar content remains) ... */}
+            {searchOpen && (
+              <div className="search-row">
+                <input
+                  aria-label="Buscar usuarios"
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar por nombre o QR"
+                  value={searchQuery}
+                />
+                <button aria-label="Cerrar búsqueda" className="icon-button" onClick={() => { setSearchOpen(false); setSearchQuery(''); }} type="button">
+                  <CloseIcon />
+                </button>
+              </div>
+            )}
             <div className="sidebar-actions">
               <button aria-label="Buscar conversaciones" className="icon-button" onClick={() => setSearchOpen((current) => !current)} type="button">
                 <SearchIcon />
@@ -718,37 +731,444 @@ function ChatShell({ user }: { user: User }) {
                 Nueva
               </button>
             </div>
-            {/* ... rest of sidebar ... */}
+            {profileResults.length > 0 && searchOpen && (
+              <div className="search-results" role="list">
+                <p className="result-label">Usuarios</p>
+                {profileResults.map((profile) => (
+                  <button
+                    key={profile.id}
+                    className="profile-result"
+                    onClick={() => {
+                      void startConversationWithProfile(profile);
+                      setActiveTab('messages');
+                    }}
+                    role="listitem"
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="avatar-dot">
+                      {(profile.display_name || profile.username || '?').slice(0, 1).toUpperCase()}
+                    </span>
+                    <span>
+                      <strong>{profile.display_name || profile.username}</strong>
+                      <small>@{profile.username}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <nav aria-label="Conversaciones" className="conversation-list">
+              {visibleConversations.length === 0 ? (
+                <p className="empty-state">Sin conversaciones</p>
+              ) : (
+                visibleConversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    aria-current={conversation.id === activeConversationId ? 'page' : undefined}
+                    className="conversation-button"
+                    onClick={() => {
+                      setActiveConversationId(conversation.id);
+                      setActiveTab('messages');
+                      if (window.innerWidth <= 760) {
+                        setSidebarPinned(false);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <span className="conversation-title">{conversation.title || 'Conversacion'}</span>
+                    <span className="conversation-meta">
+                      {formatTime.format(new Date(conversation.updated_at))}
+                    </span>
+                  </button>
+                ))
+              )}
+            </nav>
           </aside>
         )}
 
-        {(activeTab === 'messages' && activeConversationId) && (
+        {/* Chat Panel - Only visible on messages tab with active conversation */}
+        {activeTab === 'messages' && activeConversationId && (
           <section className="chat-panel">
-            {/* ... chat panel content ... */}
+            <header className="chat-header">
+              <div>
+                <h2>{activeConversation?.title || 'Conversacion'}</h2>
+                <p>
+                  <span className="presence-dot" aria-hidden="true" />
+                  En línea
+                </p>
+              </div>
+              <div className="chat-header-actions">
+                <button aria-label="Ver información" className="icon-button" onClick={() => setSettingsOpen(true)} type="button">
+                  <GearIcon />
+                </button>
+              </div>
+            </header>
+
+            <div
+              aria-live="polite"
+              className="message-list"
+              ref={messageListRef}
+              role="log"
+            >
+              <div className="message-virtual-space" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const message = messages[virtualRow.index];
+                  const isOwn = message.sender_id === user.id;
+                  const senderProfile = profilesMap[message.sender_id];
+                  const senderName = senderProfile?.display_name || senderProfile?.username || 'Usuario';
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`message-row ${isOwn ? 'own' : 'received'}`}
+                      data-index={virtualRow.index}
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    >
+                      <div className="message-bubble">
+                        {!isOwn && (
+                          <div className="message-meta">
+                            <strong>{senderName}</strong>
+                          </div>
+                        )}
+                        <p>{parseMessageContent(message.body)}</p>
+                        {message.attachment_path && (
+                          <div className="message-attachments">
+                            <a
+                              className="command-badge"
+                              href={message.attachment_path}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                            >
+                              📎 Ver adjunto
+                            </a>
+                          </div>
+                        )}
+                        <div className="message-meta">
+                          <time dateTime={message.created_at}>{formatTime.format(new Date(message.created_at))}</time>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {fileAttachments.length > 0 && (
+              <div className="file-previews">
+                {fileAttachments.map((attachment, index) => (
+                  <div key={index} className="file-preview">
+                    {attachment.previewUrl ? (
+                      <img alt="" className="file-preview-image" src={attachment.previewUrl} />
+                    ) : (
+                      <span aria-hidden="true" className="file-preview-icon">📎</span>
+                    )}
+                    <span className="file-preview-name">{attachment.file.name}</span>
+                    <button
+                      aria-label={`Eliminar ${attachment.file.name}`}
+                      className="file-preview-remove icon-button"
+                      onClick={() => {
+                        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+                        setFileAttachments([]);
+                      }}
+                      type="button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form
+              className="composer"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const text = draft.trim();
+                if ((!text && fileAttachments.length === 0) || !activeConversationId) return;
+
+                let attachmentPath: string | null = null;
+                if (fileAttachments.length > 0) {
+                  setStatus('Subiendo archivos...');
+                  try {
+                    const uploaded = await uploadFile(fileAttachments[0].file, activeConversationId);
+                    attachmentPath = uploaded;
+                  } catch (err: any) {
+                    setStatus(err.message || 'Error al subir archivos');
+                    return;
+                  }
+                }
+
+                const tempId = `temp-${Date.now()}`;
+                pendingMessageIdsRef.current.add(tempId);
+
+                const optimisticMsg: Message = {
+                  id: tempId,
+                  conversation_id: activeConversationId,
+                  sender_id: user.id,
+                  body: text,
+                  attachment_path: attachmentPath,
+                  created_at: new Date().toISOString(),
+                };
+
+                setMessages((current) => [...current, optimisticMsg]);
+                setDraft('');
+                setFileAttachments([]);
+                setStatus('');
+
+                try {
+                  const { error } = await supabase!.from('messages').insert({
+                    conversation_id: activeConversationId,
+                    sender_id: user.id,
+                    body: text,
+                    attachment_path: attachmentPath,
+                  });
+
+                  pendingMessageIdsRef.current.delete(tempId);
+
+                  if (error) throw error;
+
+                  await supabase!.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', activeConversationId);
+                } catch (err: any) {
+                  setMessages((current) => current.filter((m) => m.id !== tempId));
+                  setStatus(err.message || 'No se pudo enviar el mensaje');
+                }
+              }}
+            >
+              <button
+                aria-label="Adjuntar archivo"
+                className="icon-button"
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                <AttachIcon />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*,.pdf"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const previewUrl = getFileType(file) === 'image' ? URL.createObjectURL(file) : undefined;
+                    setFileAttachments([{ file, type: getFileType(file), previewUrl }]);
+                  }
+                }}
+              />
+              <textarea
+                aria-label="Escribe un mensaje"
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    (e.currentTarget.form as HTMLFormElement)?.requestSubmit();
+                  }
+                }}
+                placeholder="Escribe un mensaje..."
+                rows={1}
+                value={draft}
+              />
+              <button aria-label="Enviar mensaje" className="send-button" disabled={!draft.trim() && fileAttachments.length === 0} type="submit">
+                <SendIcon />
+              </button>
+            </form>
+            {status && <p aria-live="polite" className="form-status">{status}</p>}
+          </section>
+        )}
+        
+        {/* Empty state for messages tab without conversation */}
+        {activeTab === 'messages' && !activeConversationId && (
+          <section className="chat-panel">
+            <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--muted)' }}>
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: '3rem', margin: '0 0 16px' }}>💬</p>
+                <h2>Selecciona una conversación</h2>
+                <p>Toca el botón de inicio para ver tus conversaciones</p>
+              </div>
+            </div>
+          </section>
+        )}
+        
+        {/* Home tab content - Shows conversation list */}
+        {activeTab === 'home' && (
+          <section className="chat-panel">
+            <header className="chat-header">
+              <h2>Inicio</h2>
+            </header>
+            <div className="conversation-list" style={{ padding: '14px' }}>
+              {conversations.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)' }}>
+                  <p style={{ fontSize: '3rem', margin: '0 0 16px' }}>📭</p>
+                  <h3>Sin conversaciones</h3>
+                  <p>Crea una nueva conversación para comenzar</p>
+                </div>
+              ) : (
+                conversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    className="profile-result"
+                    onClick={() => {
+                      setActiveConversationId(conversation.id);
+                      setActiveTab('messages');
+                    }}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="avatar-dot" style={{ background: 'var(--positive)' }}>
+                      💬
+                    </span>
+                    <span>
+                      <strong>{conversation.title || 'Conversación'}</strong>
+                      <small>{new Date(conversation.updated_at).toLocaleDateString('es')}</small>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
+        )}
+        
+        {/* Profile tab content */}
+        {activeTab === 'profile' && (
+          <section className="chat-panel">
+            <header className="chat-header">
+              <h2>Mi Perfil</h2>
+            </header>
+            <div style={{ padding: '20px', textAlign: 'center' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--accent)', color: 'white', display: 'grid', placeItems: 'center', fontSize: '2rem', fontWeight: 'bold', margin: '0 auto 20px' }}>
+                {displayName.slice(0, 1).toUpperCase()}
+              </div>
+              <h3>{displayName}</h3>
+              <p style={{ color: 'var(--muted)' }}>@{username}</p>
+              <div style={{ marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '300px', margin: '30px auto 0' }}>
+                <button className="primary-button" onClick={() => setSettingsOpen(true)}>Editar Perfil</button>
+                <button className="secondary-button" onClick={() => setQrOpen(true)}>Ver Código QR</button>
+                <button className="danger-button" onClick={async () => { await supabase?.auth.signOut(); }}>Cerrar Sesión</button>
+              </div>
+            </div>
           </section>
         )}
       </div>
 
+      {/* Button Islands System - Quick Actions (Desktop & Mobile) */}
+      {activeConversationId && activeTab === 'messages' && (
+        <div className="button-island chat-actions-island" role="group" aria-label="Acciones rápidas">
+          <button 
+            className="icon-button" 
+            onClick={() => fileInputRef.current?.click()} 
+            aria-label="Adjuntar archivo"
+            type="button"
+          >
+            <AttachIcon />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,audio/*,.pdf"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const previewUrl = getFileType(file) === 'image' ? URL.createObjectURL(file) : undefined;
+                setFileAttachments([{ file, type: getFileType(file), previewUrl }]);
+              }
+            }}
+          />
+          <button 
+            className="icon-button" 
+            onClick={() => setShowCommandHelp(true)} 
+            aria-label="Ayuda de comandos"
+            type="button"
+          >
+            <span style={{ fontSize: '18px', fontWeight: 'bold' }}>?</span>
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Island - Always visible for quick access */}
+      <div className="button-island nav-island" role="navigation" aria-label="Navegación rápida">
+        <button 
+          className="icon-button" 
+          onClick={() => setSidebarPinned(!sidebarPinned)} 
+          aria-label="Mostrar/ocultar sidebar"
+          type="button"
+        >
+          <ContactsIcon />
+        </button>
+        <button 
+          className="icon-button" 
+          onClick={() => setQrOpen(true)} 
+          aria-label="Buscar por QR"
+          type="button"
+        >
+          <QrIcon />
+        </button>
+      </div>
+
       {/* Mobile Bottom Navigation */}
-      <nav className="mobile-bottom-nav">
-        <button onClick={() => { setActiveTab('home'); }} aria-selected={activeTab === 'home'}>
+      <nav className="mobile-bottom-nav" role="navigation" aria-label="Navegación principal">
+        <button 
+          onClick={() => { setActiveTab('home'); setSearchOpen(false); }} 
+          aria-selected={activeTab === 'home'} 
+          aria-label="Inicio"
+          type="button"
+        >
           <HomeIcon />
         </button>
-        <button onClick={() => { setActiveTab('messages'); }} aria-selected={activeTab === 'messages'}>
+        <button 
+          onClick={() => { setActiveTab('messages'); }} 
+          aria-selected={activeTab === 'messages'} 
+          aria-label="Mensajes"
+          type="button"
+        >
           <MessagesIcon />
         </button>
-        <button onClick={() => { setActiveTab('search'); setSearchOpen(true); }} aria-selected={activeTab === 'search'}>
+        <button 
+          onClick={() => { setActiveTab('search'); setSearchOpen(true); }} 
+          aria-selected={activeTab === 'search'} 
+          aria-label="Buscar"
+          type="button"
+        >
           <SearchIcon />
         </button>
-        <button onClick={() => { setActiveTab('profile'); setSettingsOpen(true); }} aria-selected={activeTab === 'profile'}>
+        <button 
+          onClick={() => { setActiveTab('profile'); setSettingsOpen(false); setQrOpen(false); }} 
+          aria-selected={activeTab === 'profile'} 
+          aria-label="Perfil"
+          type="button"
+        >
           <UserIcon />
         </button>
-        <button onClick={() => { setActiveTab('messages'); setActiveConversationId(null); }}>
+        <button 
+          onClick={async () => { await supabase?.auth.signOut(); }} 
+          aria-label="Cerrar sesión"
+          type="button"
+        >
           <EscapeIcon />
         </button>
       </nav>
 
-      {/* ... (existing dialogs) ... */}
+      {/* Dialogs */}
+      {showCommandHelp && <CommandHelpDialog onClose={() => setShowCommandHelp(false)} />}
+      {settingsOpen && (
+        <SettingsDialog
+          displayName={displayName}
+          username={username}
+          onClose={() => { setSettingsOpen(false); if (activeTab === 'profile') setActiveTab('home'); }}
+          onStatus={setStatus}
+        />
+      )}
+      {qrOpen && (
+        <QrSearchDialog
+          username={username}
+          onClose={() => { setQrOpen(false); if (activeTab === 'profile') setActiveTab('home'); }}
+          onSearch={(value) => {
+            setSearchQuery(value);
+            setSearchOpen(true);
+            setActiveTab('search');
+            setQrOpen(false);
+          }}
+          onStatus={setStatus}
+        />
+      )}
     </main>
   );
 

@@ -16,20 +16,20 @@ security definer
 set search_path = public
 as $$
 declare
-  focalid text;
+  v_focalid text;
   exists_count int;
   attempts int := 0;
 begin
   loop
     -- Generar FOCALID aleatorio de 8 caracteres alfanuméricos
-    focalid := lower(left(encode(gen_random_bytes(6), 'base64'), 8));
-    focalid := translate(focalid, '+/=', 'abc');
+    v_focalid := lower(left(encode(gen_random_bytes(6), 'base64'), 8));
+    v_focalid := translate(v_focalid, '+/=', 'abc');
     
-    -- Verificar que no exista
-    select count(*) into exists_count from public.x21_users where focalid = focalid;
+    -- Verificar que no exista (v_focalid vs columna focalid)
+    select count(*) into exists_count from public.x21_users where focalid = v_focalid;
     
     if exists_count = 0 then
-      return focalid;
+      return v_focalid;
     end if;
     
     attempts := attempts + 1;
