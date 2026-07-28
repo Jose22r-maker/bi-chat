@@ -150,16 +150,9 @@ export type Message = Database['public']['Tables']['messages']['Row'];
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type ScheduledMessage = Database['public']['Tables']['scheduled_messages']['Row'];
 
-export type X21User = {
-  focalid: string;
-  email: string;
-  created_at: string;
-};
-
 export type AttachmentType = 'image' | 'video' | 'audio' | 'document';
 export type Attachment = {
   file: File;
   type: AttachmentType;
   previewUrl?: string;
-  uploadProgress?: number;
 };
