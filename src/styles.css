@@ -806,9 +806,12 @@ textarea {
     height: calc(100dvh - 60px - env(safe-area-inset-bottom));
     overflow: hidden;
     position: relative;
+    display: block;
   }
 
-  .sidebar, .chat-panel {
+  /* Each tab shows its corresponding section */
+  .mobile-content-wrapper .sidebar,
+  .mobile-content-wrapper .chat-panel {
     display: none;
     width: 100%;
     height: 100%;
@@ -816,26 +819,42 @@ textarea {
     top: 0;
     left: 0;
     z-index: 10;
+    background: var(--surface);
   }
   
-  .mobile-content-wrapper.messages .sidebar,
-  .mobile-content-wrapper.messages .chat-panel {
+  /* Home tab: show sidebar with conversations */
+  .mobile-content-wrapper.home .sidebar {
     display: flex;
   }
   
-  .mobile-content-wrapper.home .sidebar,
-  .mobile-content-wrapper.profile .sidebar,
-  .mobile-content-wrapper.search .sidebar {
-      display: flex;
+  /* Messages tab: show chat panel OR sidebar when searching */
+  .mobile-content-wrapper.messages .chat-panel {
+    display: grid;
   }
   
+  .mobile-content-wrapper.messages.sidebar-open .sidebar,
+  .mobile-content-wrapper.search .sidebar {
+    display: flex;
+  }
+  
+  /* Search tab: show sidebar with search */
+  .mobile-content-wrapper.search .sidebar {
+    display: flex;
+  }
+  
+  /* Profile tab: show profile panel */
+  .mobile-content-wrapper.profile .chat-panel {
+    display: grid;
+  }
+
   /* Reset sidebar positioning for mobile independent view */
   .sidebar {
-    position: static;
+    position: absolute;
     transform: none;
     opacity: 1;
     pointer-events: auto;
     border-right: none;
+    background: var(--surface);
   }
 
   .message-list {
